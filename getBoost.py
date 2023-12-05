@@ -9,6 +9,56 @@ import progressbar as P
 import tempfile,gzip,pylhe
 import fastjet
 
+class ParticleList(object):
+
+    def __init__(self) -> None:
+        self.particleList = []
+        self.weightList = []
+
+    @classmethod
+    def fromEvents(cls,events,nevents,pdgs,status=[1]):
+        pList = ParticleList()
+        for event in events:
+            weightPB = event.eventinfo.weight/nevents
+            particlesInEvent = []
+            for ptc in event.particles:
+                if ptc.id not in pdgs:
+                    continue
+                if ptc.status not in status:
+                    continue
+                ptc.PID = int(ptc.id)
+                p = np.sqrt(ptc.px**2 + ptc.py**2 + ptc.pz**2)
+                ptc.PT = np.sqrt(ptc.px**2 + ptc.py**2)
+                if not ptc.PT: # Only for incoming partons
+                    ptc.Eta = None
+                    ptc.Phi = None
+                else:
+                    ptc.Eta = (1./2.)*np.log((p+ptc.pz)/(p-ptc.pz))        
+                    ptc.Phi = np.arctan2(ptc.py,ptc.px)
+                ptc.Px = ptc.px
+                ptc.Py = ptc.py
+                ptc.Pz = ptc.pz
+                ptc.E = ptc.e
+                ptc.Beta = p/ptc.E
+                particlesInEvent.append(ptc)
+            pList.particleList += particlesInEvent[:]
+            pList.weightList += [weightPB/len(particlesInEvent)]*len(particlesInEvent)
+
+        return pList
+    
+    def __getattr__(self, attr):
+
+        # If calling another special method, return default (required for pickling)
+        if (attr.startswith('__') and attr.endswith('__')) or attr in dir(self):
+            return self.__getattribute__(attr)
+
+        try:
+            val = [getattr(particle, attr) for particle in self.particleList]
+            return val
+        except AttributeError:
+            raise AttributeError("Attribute %s not found in particles" % attr)
+
+
 def getLHEevents(fpath):
     """
     Reads a set of LHE files and returns a dictionary with the file labels as keys

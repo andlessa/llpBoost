@@ -148,6 +148,7 @@ def getInfo(f):
 
     procDict = {
                 'p p > x1 n1' : r'$p p \to \tilde{\chi}_1^\pm \tilde{\chi}_1^0$',
+                'p p > go go' : r'$p p \to \tilde{g} \tilde{g}$',
                 'p p > x1 x1' : r'$p p \to \tilde{\chi}_1^\pm \tilde{\chi}_1^\mp$'
                 }
     
@@ -173,11 +174,13 @@ def getInfo(f):
     parsSLHA = pyslha.readSLHA(parsData)
     
     if 1000024 in parsSLHA.blocks['MASS']:
+        mG = parsSLHA.blocks['MASS'][1000021]
         mC1 = parsSLHA.blocks['MASS'][1000024]
         mN1 = parsSLHA.blocks['MASS'][1000022]
     else:
         mC1 = 0.0
         mN1 = 0.0
+        mG = 0.0
     
 
     
@@ -186,7 +189,8 @@ def getInfo(f):
     nEvents = eval(eventData.split('\n')[1].split(':')[1].strip())
     xsec = eval(eventData.split('\n')[2].split(':')[1].strip())
 
-    fileInfo = {'model' : model, 'process' : proc, 'mC1' : mC1, 'mN1' : mN1,
+    fileInfo = {'model' : model, 'process' : proc, 
+                'mC1' : mC1, 'mN1' : mN1,'mGluino' : mG,
                'xsec (pb)' : xsec, 'MC Events' : nEvents, 'file' : f}
     
     return fileInfo

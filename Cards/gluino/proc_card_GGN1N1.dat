@@ -41,5 +41,5 @@ define l- = e- mu-
 define vl = ve vm vt
 define vl~ = ve~ vm~ vt~
 import model MSSM_SLHA2
-generate p p > go go, (go > n1 j j)
+generate p p > go go, (go > n1 u u~)
 output ../../pp2GGN1N1

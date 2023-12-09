@@ -8,19 +8,27 @@ import tempfile,gzip,pylhe
 import fastjet
 
 
-def getJets(events,nevents,dr=0.4,etamax=4.5,
-            pdgs=[1,-1,2,-2,3,-3,4,-4,21]):
+def getJets(event,dr=0.4,etamax=4.5,
+            pdgs=[1,-1,2,-2,3,-3,4,-4,21],
+            status=[1]):
 
     jetdef = fastjet.JetDefinition(fastjet.antikt_algorithm, 
                                    dr)
+    quarks = [ptc for ptc in event.particles 
+                if int(ptc.id) in pdgs]
+    quarks = [q for q in quarks[:] if q.status in status]
+    jetArray = [fastjet.PseudoJet(q.Px,q.Py,q.Pz,q.E) for q in quarks if abs(q.Eta) < etamax]
+    for ij,j in enumerate(jetArray):
+        j.set_user_index(quarks[ij].PID)
+    cluster = fastjet.ClusterSequence(jetArray, jetdef)
+    jets = []
+    for j in cluster.inclusive_jets():
+        j.Eta = j.eta()
+        j.PT = j.pt()
+        j.PID = 'jet'
+        jets.append(j)
+    return jets
 
-    for event in events:
-        quarks = [ptc for ptc in events.particles 
-                  if int(ptc.id) in pdgs]
-        jetArray = [fastjet.PseudoJet(q.Px,q.Py,q.Pz,q.E) for q in quarks if abs(q.Eta) < etamax]
-        for ij,j in enumerate(jetArray):
-            j.set_user_index(quarks[ij].PID)
-        cluster = fastjet.ClusterSequence(jetArray, jetdef)
 
 
 class ParticleList(object):
@@ -40,6 +48,7 @@ class ParticleList(object):
         self.particleList.append(ptc)
         self.ieventList.append(ievent)
 
+
     def __getattr__(self, attr):
 
         # If calling another special method, return default (required for pickling)
@@ -52,30 +61,71 @@ class ParticleList(object):
         except AttributeError:
             raise AttributeError("Attribute %s not found in particles" % attr)
 
+    def __len__(self):
 
+        return len(self.particleList)
+    
+    def __iter__(self):
 
-class ParticleDict(object):
+        return iter(self.particleList)
+    
+    def __getitem__(self,index):
+
+        return self.particleList[index]
+
+class NestedParticleList(object):
+    """
+    Convenience class for holding a list of ParticleList objects
+    with the same PDG extracted from LHE events.
+    """
+
+    def __init__(self,pdg=None) -> None:
+        self.particleIndexList = {} # keys = index of particle in event (in case the same particle appears multiple times)
+        self.pdg = pdg
+
+    def add(self,pList,ievent):
+        if any(ptc.PID != self.pdg for ptc in pList):
+            raise TypeError("Trying to add particle with wrong pdg.")
+        for index,ptc in enumerate(pList):
+            if not index in self.particleIndexList:
+                self.particleIndexList[index] = ParticleList(self.pdg)
+            self.particleIndexList[index].add(ptc,ievent)
+
+    def __getitem__(self,index: int):
+
+        if index not in self.particleIndexList:
+            return []
+        else:
+            return self.particleIndexList[index]
+        
+
+    def __len__(self):
+
+        return len(self.particleIndexList)
+
+    def shape(self):
+
+        s = [(index,len(pList)) for index,pList in self.particleIndexList.items()]
+        return tuple(s)
+
+class EventDict(object):
 
     def __init__(self,pdgs,labels=None) -> None:
         if not labels:
             labels = pdgs[:]
-        self.particleDict = {label : ParticleList(pdg) 
+        self.particleDict = {label : NestedParticleList(pdg) 
                              for label,pdg in zip(labels,pdgs)}
 
-    def __getitem__(self, label : int) -> ParticleList:
+    def __getitem__(self, label : int) -> NestedParticleList:
         return self.particleDict[label]
 
     @classmethod
     def fromEvents(cls,events,nevents,pdgs,status=[1],labels=None):
-        pDict = ParticleDict(pdgs)
+        pDict = EventDict(pdgs)
         for ievent,event in enumerate(events):
             weightPB = event.eventinfo.weight/nevents
             eventDict = {pdg : [] for pdg in pdgs}
             for ptc in event.particles:
-                if ptc.id not in pdgs:
-                    continue
-                if ptc.status not in status:
-                    continue
                 ptc.PID = int(ptc.id)
                 p = np.sqrt(ptc.px**2 + ptc.py**2 + ptc.pz**2)
                 ptc.PT = np.sqrt(ptc.px**2 + ptc.py**2)
@@ -90,13 +140,20 @@ class ParticleDict(object):
                 ptc.Pz = ptc.pz
                 ptc.E = ptc.e
                 ptc.Beta = p/ptc.E
+                ptc.weight = weightPB
+                if ptc.id not in pdgs:
+                    continue
+                if ptc.status not in status:
+                    continue
                 eventDict[ptc.PID].append(ptc)
             # Assign a weight for each particle, so
             # the total weight matches
-            for pdg,pList in eventDict.items():
-                for p in pList:
-                    p.weight = weightPB/len(pList)
-                    pDict[pdg].add(p,ievent)
+            for pdg,pList in eventDict.items():     
+                pDict[pdg].add(pList,ievent)
+
+            if 'jet' in pdgs:
+                jets = getJets(event)
+                pDict['jet'].add(jets,ievent)
 
         # Convert PDG to labels
         if labels:
@@ -105,6 +162,21 @@ class ParticleDict(object):
 
         return pDict
     
+
+    def __getattr__(self, attr):
+
+        # If calling another special method, return default (required for pickling)
+        if (attr.startswith('__') and attr.endswith('__')) or attr in dir(self):
+            return self.__getattribute__(attr)
+
+        if attr in self.particleDict:
+            return self.particleDict[attr]
+        try:
+            val = [getattr(particle, attr) for particle in self.particleList]
+            return val
+        except AttributeError:
+            raise AttributeError("Attribute %s not found in particles" % attr)
+
 
 def getLHEevents(fpath):
     """

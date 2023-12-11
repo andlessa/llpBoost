@@ -116,37 +116,6 @@ def getInfoFromOutput(outputStr):
                'cross-section (pb)' : xsec, 'Number of events' : int(nevts)}
     return runInfo
 
-def hackForMadSpin(runFolder):
-    """
-    Replace the process card by a similar one, but for the SM
-    """
-
-    proc_card = os.path.join(runFolder,'Cards/proc_card_mg5.dat')
-    proc_card_copy = proc_card.replace('.dat','_original.dat')
-    shutil.copy(proc_card,proc_card_copy)    
-    with open(proc_card,'r') as f:
-        lines = f.readlines()
-    newLines = []
-    for l in lines:
-        l = l.strip()
-        fields = [f.strip() for f in l.split()]
-        if len(fields) <= 1:
-            pass
-        elif fields[0] == 'import' and fields[1] == 'model':
-            if fields[2].lower() != 'sm':
-                l = 'import model sm'
-        elif fields[0] == 'generate' or fields[0]+' '+fields[1] == 'add process':
-            fields = [f for f in fields if not any(x in f for x in ['NP','QCD','QED','==','=<'])]
-            l = fields[0] + ' ' + ' '.join(fields[1:])
-        newLines.append(l)
-    with open(proc_card,'w') as f:
-        for l in newLines:
-            f.write(l+'\n')
-
-
-
-    return proc_card_copy
-
 def generateEvents(parser):
     
     """
@@ -246,7 +215,6 @@ def generateEvents(parser):
         commandsFileF.write('detector=OFF\n')
     if runMadSpin:
         commandsFileF.write('madspin=ON\n')
-        originalProcCard = hackForMadSpin(runFolder)
     else:
         commandsFileF.write('madspin=OFF\n')
 
@@ -284,27 +252,7 @@ def generateEvents(parser):
 
     logger.debug(f'MG5 event error:\n %s \n' %errorMsg.decode("utf-8"))
     logger.debug(f'MG5 event output:\n %s \n' %output.decode("utf-8"))
-      
-#    if runConvert:
-#        if 'run number' in runInfo:
-#            lheFile = os.path.join(runFolder,'Events',runInfo['run number'],'unweighted_events.lhe.gz')
-#            logger.debug('Converting file %s' %lheFile)
-#            getSLHAFile(lheFile)
-#        else:
-#            logger.warning("Could not generate SLHA file for %s" %(runFolder))
-
-    # When running MadSpin for the top decays, the proc_card has to be replaced
-    # so the top decay is computed using only the SM
-    if runMadSpin:
-        shutil.move(originalProcCard,
-                    os.path.join(runFolder,'Cards/proc_card_mg5.dat'))
-        runDirs = list(glob.glob(os.path.join(runFolder,'Events','run_*')))
-        runDir_decayed = [r for r in runDirs if 'decayed' in r][0]
-        runDir_orig = [r for r in runDirs if 'decayed' not in r][0]
-        for f in glob.glob(os.path.join(runDir_decayed,'*')):
-            shutil.move(f,os.path.join(runDir_orig,os.path.basename(f)))
-        shutil.rmtree(runDir_decayed)
-        
+   
 
     if cleanOutput:
         os.remove(commandsFile)

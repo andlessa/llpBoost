@@ -16,7 +16,7 @@
 # set seed 1
 # set Nevents_for_max_weight 75 # number of events for the estimate of the max. weight
 # set BW_cut 15                 # cut on how far the particle can be off-shell
-# set spinmode full          # Use one of the madspin special mode
+ set spinmode none          # Use one of the madspin special mode (none = ignore spin correlations and off-shell effects. Needed for 3-body decays)
  set max_weight_ps_point 400  # number of PS to estimate the maximum for each event
 # set input_format lhe_no_banner
 # specify the decay for the final state particles

@@ -24,9 +24,12 @@ def getJets(event,dr=0.4,etamax=4.5,
     jets = []
     for j in cluster.inclusive_jets():
         j.Eta = j.eta()
+        j.Phi = j.phi()
         j.PT = j.pt()
         j.PID = 'jet'
         jets.append(j)
+    # Sort jets by pT
+    jets = sorted(jets, key = lambda j: j.PT, reverse=True)
     return jets
 
 
@@ -48,7 +51,36 @@ class ParticleList(object):
         self.particleList.append(ptc)
         self.ieventList.append(ievent)
 
+    def __add__(self,other):
+        if len(self) != len(other):
+            print('Can not add lists of distinct sizes')
+            return None
+        newList = ParticleList()
+        for ievent,p1 in enumerate(self.particleList):
+            p2 = other[ievent]
+            fDict = {f : getattr(p1,f)+getattr(p2,f) 
+                     for f in p1.fieldnames}
+            ptc = p1.__class__(**fDict)
+            p = np.sqrt(ptc.px**2 + ptc.py**2 + ptc.pz**2)
+            ptc.PT = np.sqrt(ptc.px**2 + ptc.py**2)
+            if not ptc.PT: # Only for incoming partons
+                ptc.Eta = None
+                ptc.Phi = None
+            else:
+                ptc.Eta = (1./2.)*np.log((p+ptc.pz)/(p-ptc.pz))        
+                ptc.Phi = np.arctan2(ptc.py,ptc.px)
+            ptc.Px = ptc.px
+            ptc.Py = ptc.py
+            ptc.Pz = ptc.pz
+            ptc.E = ptc.e
+            ptc.Beta = p/ptc.E
+            ptc.PID = None
+            ptc.weight = p1.weight
+            newList.add(ptc,ievent)
+        
+        return newList
 
+        
     def __getattr__(self, attr):
 
         # If calling another special method, return default (required for pickling)
@@ -153,6 +185,8 @@ class EventDict(object):
 
             if 'jet' in pdgs:
                 jets = getJets(event)
+                for j in jets:
+                    j.weight = weightPB                
                 pDict['jet'].add(jets,ievent)
 
         # Convert PDG to labels
@@ -176,7 +210,6 @@ class EventDict(object):
             return val
         except AttributeError:
             raise AttributeError("Attribute %s not found in particles" % attr)
-
 
 def getLHEevents(fpath):
     """
@@ -202,6 +235,11 @@ def getLHEevents(fpath):
 
 def getInfo(f):
 
+
+    if not os.path.isfile(f):
+        print('File %s not found' %f)
+        return False
+    
     procDict = {
                 'p p > x1 n1' : r'$p p \to \tilde{\chi}_1^\pm \tilde{\chi}_1^0$',
                 'p p > go go' : r'$p p \to \tilde{g} \tilde{g}$',
